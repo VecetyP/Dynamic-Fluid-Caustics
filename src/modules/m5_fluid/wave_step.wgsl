@@ -20,6 +20,11 @@ struct SimParams {
 @group(0) @binding(1) var hPrev : texture_2d<f32>;              // h^{n-1}
 @group(0) @binding(2) var hNext : texture_storage_2d<r32float, write>; // h^{n+1}
 @group(0) @binding(3) var<uniform> P : SimParams;
+// Per-cell piston injection for this step (M4 actuation, spec §7.1). Zero
+// everywhere except piston cells, which a scatter pass fills each step. Added
+// into h^{n+1} AFTER the leapfrog — the exact rule the M4 basis was built from
+// and reference.ts::forwardPlayback replays. All-zero during interactive play.
+@group(0) @binding(4) var injTex : texture_2d<f32>;
 
 // Clamped integer load — clamping the coordinate mirrors the edge cell onto its
 // ghost, giving ∂h/∂n = 0 (reflective wall) with no branching.
@@ -55,6 +60,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let r2 = dx * dx + dy * dy;
     hn = hn + P.pokeAmp * exp(-r2 / (2.0 * P.pokeR * P.pokeR));
   }
+
+  // Piston actuation: add this step's injection (0 except at piston cells).
+  hn = hn + textureLoad(injTex, vec2<i32>(x, y), 0).r;
 
   textureStore(hNext, vec2<i32>(x, y), vec4<f32>(hn, 0.0, 0.0, 0.0));
 }
