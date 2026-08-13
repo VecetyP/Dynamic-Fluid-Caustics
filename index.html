@@ -10,50 +10,72 @@
         font-family: system-ui, sans-serif; }
       #app { display: flex; flex-direction: column; height: 100%; }
       header { padding: 8px 14px; font-size: 13px; letter-spacing: .04em;
-        border-bottom: 1px solid #1e293b; }
+        border-bottom: 1px solid #1e293b; flex: 0 0 auto; }
       header b { color: #2dd4bf; }
-      #stage { flex: 1; display: flex; align-items: center; justify-content: center;
-        gap: 28px; flex-wrap: wrap; }
-      .pane { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+
+      /* Main workspace: left control panel + large 3D viewport. */
+      #workspace { flex: 1 1 auto; display: flex; min-height: 0; }
+
+      #panel { flex: 0 0 300px; overflow-y: auto; padding: 14px;
+        border-right: 1px solid #1e293b; display: flex; flex-direction: column; gap: 16px; }
+      .group { display: flex; flex-direction: column; gap: 8px; }
       .label { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: .08em; }
-      canvas { border: 1px solid #1e293b; }
-      #draw-canvas { width: 440px; height: 440px; background: #000; cursor: crosshair;
+      canvas { border: 1px solid #1e293b; display: block; }
+      #draw-canvas { width: 272px; height: 272px; background: #000; cursor: crosshair;
         touch-action: none; image-rendering: pixelated; }
-      #gpu-canvas { width: 480px; height: 480px; }
-      .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; }
+      #gpu-canvas { width: 272px; height: 272px; }
+      .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
       .slider { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #94a3b8; }
-      .slider input[type=range] { accent-color: #2dd4bf; width: 160px; }
+      .slider input[type=range] { accent-color: #2dd4bf; width: 150px; }
       button { background: #14304a; color: #cbd5e1; border: 1px solid #245; border-radius: 6px;
         padding: 6px 12px; font-size: 13px; cursor: pointer; }
       button:hover { background: #1c3d5e; }
       button.primary { background: #0d5f57; border-color: #2dd4bf; color: #e8fffb; }
-      #hint { padding: 6px 14px; font-size: 12px; color: #64748b; border-top: 1px solid #1e293b; }
+
+      /* 3D viewport fills the remaining space; the canvas tracks its size. */
+      #viewport { flex: 1 1 auto; position: relative; min-width: 0; }
+      #stage3d { width: 100%; height: 100%; display: block; border: none; }
+      #viewport .badge { position: absolute; top: 10px; left: 12px; font-size: 12px;
+        color: #64748b; pointer-events: none; letter-spacing: .06em; }
+
+      #hint { padding: 6px 14px; font-size: 12px; color: #64748b;
+        border-top: 1px solid #1e293b; flex: 0 0 auto; }
       #error { color: #f87171; padding: 14px; white-space: pre-wrap; }
     </style>
   </head>
   <body>
     <div id="app">
       <header><b>Dynamic Fluid Caustics</b> — sketch a target, watch the water focus light into it</header>
-      <div id="stage">
-        <div class="pane">
-          <div class="label">1 · Draw a target</div>
-          <canvas id="draw-canvas" width="256" height="256"></canvas>
-          <div class="controls">
-            <button id="solve-btn" class="primary">Solve → Caustic</button>
-            <button id="demo-btn">Demo bump</button>
-            <button id="clear-btn">Clear</button>
+
+      <div id="workspace">
+        <aside id="panel">
+          <div class="group">
+            <div class="label">1 · Draw a target</div>
+            <canvas id="draw-canvas" width="256" height="256"></canvas>
+            <div class="controls">
+              <button id="solve-btn" class="primary">Solve → Caustic</button>
+              <button id="demo-btn">Demo bump</button>
+              <button id="clear-btn">Clear</button>
+            </div>
           </div>
-        </div>
-        <div class="pane">
-          <div class="label">2 · Caustic on the tank floor</div>
-          <canvas id="gpu-canvas" width="640" height="640"></canvas>
-          <div class="controls">
-            <label class="slider">Speed
-              <input type="range" id="speed" min="0.3" max="4" step="0.05" value="1" />
-            </label>
+
+          <div class="group">
+            <div class="label">Target caustic (preview)</div>
+            <canvas id="gpu-canvas" width="640" height="640"></canvas>
+            <div class="controls">
+              <label class="slider">Speed
+                <input type="range" id="speed" min="0.3" max="4" step="0.05" value="1" />
+              </label>
+            </div>
           </div>
+        </aside>
+
+        <div id="viewport">
+          <canvas id="stage3d"></canvas>
+          <div class="badge">3D tank · drag to orbit · scroll to zoom</div>
         </div>
       </div>
+
       <div id="hint">Draw with the mouse, then Solve. The inverse solver computes a water
         surface and piston schedule; the caustic pulses into your shape.</div>
     </div>
