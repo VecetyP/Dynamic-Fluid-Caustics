@@ -16,3 +16,6 @@ __pycache__/
 
 # Stray probe file (sandbox artifact)
 .writetest
+
+# Scratch debug test files
+src/__*.test.ts

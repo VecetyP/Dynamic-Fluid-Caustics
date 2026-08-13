@@ -48,7 +48,11 @@ fn vs(@builtin(vertex_index) vi: u32) -> VSOut {
   let t = P.d / (-refr.z);
   let extent = f32(n) * P.dx;
   let originXY = (vec2<f32>(f32(x), f32(y)) + 0.5) * P.dx;
-  let hit = originXY + refr.xy * t;
+  // Subtract the refracted horizontal offset: with the surface convention
+  // h_t = −u/[d(n_rel−1)] (eq 4.3), the physical transport is x + ∇u, which is
+  // the NEGATIVE of refr.xy·t here. Using +refr.xy·t renders the photographic
+  // negative (dark where the target is bright).
+  let hit = originXY - refr.xy * t;
 
   // Map floor hit (metres, [0,extent]) → clip space, y flipped.
   let uv = hit / extent;

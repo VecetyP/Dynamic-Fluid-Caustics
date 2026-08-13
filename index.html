@@ -12,19 +12,42 @@
       header { padding: 8px 14px; font-size: 13px; letter-spacing: .04em;
         border-bottom: 1px solid #1e293b; }
       header b { color: #2dd4bf; }
-      #stage { flex: 1; display: grid; place-items: center; }
-      canvas { width: 640px; height: 640px; image-rendering: pixelated;
-        border: 1px solid #1e293b; cursor: crosshair; }
-      #hint { padding: 6px 14px; font-size: 12px; color: #64748b;
-        border-top: 1px solid #1e293b; }
+      #stage { flex: 1; display: flex; align-items: center; justify-content: center;
+        gap: 28px; flex-wrap: wrap; }
+      .pane { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+      .label { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: .08em; }
+      canvas { border: 1px solid #1e293b; image-rendering: pixelated; }
+      #draw-canvas { width: 320px; height: 320px; background: #000; cursor: crosshair; touch-action: none; }
+      #gpu-canvas { width: 320px; height: 320px; }
+      .controls { display: flex; gap: 8px; }
+      button { background: #14304a; color: #cbd5e1; border: 1px solid #245; border-radius: 6px;
+        padding: 6px 12px; font-size: 13px; cursor: pointer; }
+      button:hover { background: #1c3d5e; }
+      button.primary { background: #0d5f57; border-color: #2dd4bf; color: #e8fffb; }
+      #hint { padding: 6px 14px; font-size: 12px; color: #64748b; border-top: 1px solid #1e293b; }
       #error { color: #f87171; padding: 14px; white-space: pre-wrap; }
     </style>
   </head>
   <body>
     <div id="app">
-      <header><b>Dynamic Fluid Caustics</b> — Phase 1: poke the surface, watch the caustic</header>
-      <div id="stage"><canvas id="gpu-canvas" width="512" height="512"></canvas></div>
-      <div id="hint">Click / drag on the canvas to poke the water surface. Reflective walls. Caustic accumulates on the floor plane.</div>
+      <header><b>Dynamic Fluid Caustics</b> — sketch a target, watch the water focus light into it</header>
+      <div id="stage">
+        <div class="pane">
+          <div class="label">1 · Draw a target</div>
+          <canvas id="draw-canvas" width="128" height="128"></canvas>
+          <div class="controls">
+            <button id="solve-btn" class="primary">Solve → Caustic</button>
+            <button id="demo-btn">Demo bump</button>
+            <button id="clear-btn">Clear</button>
+          </div>
+        </div>
+        <div class="pane">
+          <div class="label">2 · Caustic on the tank floor</div>
+          <canvas id="gpu-canvas" width="512" height="512"></canvas>
+        </div>
+      </div>
+      <div id="hint">Draw with the mouse, then Solve. The inverse solver computes a water
+        surface and piston schedule; the caustic pulses into your shape.</div>
     </div>
     <div id="error"></div>
     <script type="module" src="/src/main.ts"></script>

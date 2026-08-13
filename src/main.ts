@@ -1,14 +1,20 @@
 /**
- * Entry point.
- *   - Default: interactive ripple → caustic (Phase 1). Click/drag to poke.
- *   - Press "P": Phase-3 pulse demo. Solves a piston schedule for a target
- *     surface (M4) and replays it (M5), so the caustic focuses into the target
- *     each pulse. Runs at the M4 asset's geometry. Press "I" to return.
+ * Entry point — the full sketch → caustic loop (Phase 4).
+ *
+ *   draw (M1) → density (M2) → surface (M3) → piston schedule (M4)
+ *             → wave replay (M5) → caustic (M6), pulsed by M7.
+ *
+ * Everything runs at the shipped M⁺ asset's geometry so the precomputed inverse
+ * applies. Draw a shape, press Solve, and the caustic pulses into it.
  */
 
-import { initGpu, type GpuContext } from "./gpu/device.ts";
+import { initGpu } from "./gpu/device.ts";
 import { Orchestrator } from "./modules/m7_orchestrator/index.ts";
+import { DrawingCanvas } from "./modules/m1_canvas/index.ts";
+import { preprocessDensity } from "./modules/m2_density/index.ts";
+import { InverseCausticSolver } from "./modules/m3_inverse/index.ts";
 import { ActuationMapper, type PinvAsset } from "./modules/m4_actuation/index.ts";
+import type { PistonSchedule } from "./contracts/index.ts";
 import pinvAsset from "./modules/m4_actuation/__fixtures__/pinv_small.json";
 
 const errorEl = document.getElementById("error") as HTMLDivElement;
@@ -20,76 +26,91 @@ function showError(err: unknown): void {
   console.error(err);
 }
 
-function makeInteractive(gpu: GpuContext): Orchestrator {
-  const orch = new Orchestrator(gpu);
-  orch.pokeNormalised(0.5, 0.5, 0.8); // seed a ripple
-  hintEl.textContent =
-    "Interactive: click/drag to poke the surface. Press P for the piston caustic demo.";
-  return orch;
-}
+const FOCAL_D = 0.15;
+const N_REL = 1.333;
 
-function makePulseDemo(gpu: GpuContext): Orchestrator {
-  const asset = pinvAsset as PinvAsset;
-  const g = asset.geometry;
-  // Run M5 at the asset's exact geometry so the schedule reproduces on the GPU.
-  const orch = new Orchestrator(gpu, {
-    wave: { n: g.n, dx: g.dx, depth: g.depth, gamma: g.gamma, cflSafety: 0.9 },
-    render: { focalDistance: 0.15, nRel: 1.333, cellEnergy: 0.5, exposure: 1.2 },
-  });
-
-  // Full inverse step: target surface → piston schedule (M4).
-  const schedule = new ActuationMapper(asset).solve(asset.sample!.hT);
-  const pistonCells = Uint32Array.from(g.pistonCells);
-  orch.startPulse(schedule, pistonCells);
-
-  hintEl.textContent =
-    `Pulse demo (${g.n}×${g.n}, ${g.pistonCount} pistons): the caustic focuses into the ` +
-    `target each cycle. Press I for interactive ripple.`;
-  return orch;
+/** Scale a heightmap to a target peak amplitude. The inverse solve fixes the
+ *  surface SHAPE; its absolute relief depends on the target's contrast, which is
+ *  tiny for a gentle sketch → a near-flat surface that barely refracts (uniform
+ *  caustic). Normalising every surface to a common, strong relief makes any
+ *  sketch bend light as decisively as the demo bump, so the caustic shows
+ *  structure. M4 is linear, so this just scales the piston schedule. */
+function normalizePeak(hT: ArrayLike<number>, peak: number): Float32Array {
+  let maxAbs = 0;
+  for (let i = 0; i < hT.length; i++) maxAbs = Math.max(maxAbs, Math.abs(hT[i]));
+  const s = maxAbs > 0 ? peak / maxAbs : 1;
+  const out = new Float32Array(hT.length);
+  for (let i = 0; i < hT.length; i++) out[i] = hT[i] * s;
+  return out;
 }
 
 async function boot(): Promise<void> {
-  const canvas = document.getElementById("gpu-canvas") as HTMLCanvasElement;
-  const gpu = await initGpu(canvas);
+  const asset = pinvAsset as unknown as PinvAsset;
+  const g = asset.geometry;
+  const pistonCells = Uint32Array.from(g.pistonCells);
 
-  let active: Orchestrator = makeInteractive(gpu);
+  const gpuCanvas = document.getElementById("gpu-canvas") as HTMLCanvasElement;
+  const gpu = await initGpu(gpuCanvas);
 
-  // Pointer → poke (interactive mode only).
-  let dragging = false;
-  const pokeAt = (e: PointerEvent) => {
-    if (active.state !== "INTERACTIVE") return;
-    const r = canvas.getBoundingClientRect();
-    const u = (e.clientX - r.left) / r.width;
-    const v = (e.clientY - r.top) / r.height;
-    if (u >= 0 && u <= 1 && v >= 0 && v <= 1) active.pokeNormalised(u, v);
+  // Caustic view runs at the asset geometry, in Pulse mode.
+  const orch = new Orchestrator(gpu, {
+    wave: { n: g.n, dx: g.dx, depth: g.depth, gamma: g.gamma, cflSafety: 0.9 },
+    render: { focalDistance: FOCAL_D, nRel: N_REL, cellEnergy: 0.5, exposure: 1.2 },
+  });
+
+  // Inverse pipeline pieces (geometry-fixed → build once).
+  const solver = new InverseCausticSolver(g.n);
+  const mapper = new ActuationMapper(asset);
+
+  // Common relief scale: the demo bump's own peak (it produces a good caustic).
+  let demoPeak = 0;
+  for (const v of asset.sample!.hT) demoPeak = Math.max(demoPeak, Math.abs(v));
+
+  const runTarget = (hT: Float32Array | number[], label: string): void => {
+    const schedule: PistonSchedule = mapper.solve(normalizePeak(hT, demoPeak));
+    orch.startPulse(schedule, pistonCells);
+    hintEl.textContent = `${label} — the caustic pulses into the target. Draw again and Solve to change it.`;
   };
-  canvas.addEventListener("pointerdown", (e) => {
-    dragging = true;
-    pokeAt(e);
-  });
-  canvas.addEventListener("pointermove", (e) => {
-    if (dragging) pokeAt(e);
-  });
-  window.addEventListener("pointerup", () => (dragging = false));
 
-  // Mode toggle.
-  window.addEventListener("keydown", (e) => {
-    const key = e.key.toLowerCase();
-    if (key === "p" && active.state !== "PULSE") {
-      active.destroy();
-      active = makePulseDemo(gpu);
-    } else if (key === "i" && active.state !== "INTERACTIVE") {
-      active.destroy();
-      active = makeInteractive(gpu);
+  const solveFromSketch = (intensity: Float32Array): void => {
+    const density = preprocessDensity(intensity, g.n);
+    const { target } = solver.solve(Float64Array.from(density.I), g.dx, FOCAL_D, N_REL);
+    runTarget(target.hT, "Solved your sketch");
+  };
+
+  // Drawing pad (M1).
+  const drawCanvas = document.getElementById("draw-canvas") as HTMLCanvasElement;
+  const drawing = new DrawingCanvas(drawCanvas);
+
+  document.getElementById("solve-btn")!.addEventListener("click", () => {
+    try {
+      if (!drawing.hasContent()) {
+        hintEl.textContent = "Draw something first, then Solve.";
+        return;
+      }
+      solveFromSketch(drawing.sampleIntensity(g.n));
+    } catch (err) {
+      showError(err);
+    }
+  });
+  document.getElementById("clear-btn")!.addEventListener("click", () => drawing.clear());
+  document.getElementById("demo-btn")!.addEventListener("click", () => {
+    try {
+      runTarget(asset.sample!.hT, "Demo bump");
+    } catch (err) {
+      showError(err);
     }
   });
 
+  // Show the demo target immediately so the caustic isn't blank on load.
+  runTarget(asset.sample!.hT, "Demo bump");
+
   const loop = () => {
     try {
-      active.frame();
+      orch.frame();
     } catch (err) {
       showError(err);
-      return; // stop the loop on error
+      return;
     }
     requestAnimationFrame(loop);
   };
