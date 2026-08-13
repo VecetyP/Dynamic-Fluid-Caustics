@@ -9,3 +9,10 @@ vite.config.ts.timestamp-*.mjs
 
 # Local-only working notes (you + assistant), not for the repo
 PROGRESS.md
+
+# Python prototype caches
+__pycache__/
+*.pyc
+
+# Stray probe file (sandbox artifact)
+.writetest
