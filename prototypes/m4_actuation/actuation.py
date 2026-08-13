@@ -60,31 +60,54 @@ def perimeter_pistons(n: int, count: int) -> np.ndarray:
     return cells[:, 0] * n + cells[:, 1]
 
 
-def impulse_response(n, piston_idx, dx, c2dt2, damp, T):
-    """Snapshots of piston k's impulse response at ages 1..T (a unit displacement
-    delta at the piston cell, zero initial velocity, then free evolution)."""
-    grid = np.zeros((n, n))
-    grid.flat[piston_idx] = 1.0
-    h_prev = grid.copy()
-    h_curr = grid.copy()
-    snaps = np.empty((T, n * n))
-    for s in range(T):
+def forward_playback(piston_cells, a, n, dx, c2dt2, damp) -> np.ndarray:
+    """Replay an actuation forward and return the surface at focal time T.
+
+    ACTUATION MODEL (the canonical one the whole pipeline agrees on): each step,
+    advance the free leapfrog, THEN additively inject each piston's amplitude for
+    that step into the freshly-computed h_next at its cell. `a` has shape (P, T).
+
+    This is the exact operator the basis is built from (see build_basis_matrix),
+    so M @ a.ravel() == forward_playback(a) to machine precision, and the M5 GPU/
+    CPU sim replays a PistonSchedule with this identical rule.
+    """
+    P, T = a.shape
+    h_prev = np.zeros((n, n))
+    h_curr = np.zeros((n, n))
+    for step in range(T):
         h_next = _step(h_curr, h_prev, dx, c2dt2, damp)
-        snaps[s] = h_next.ravel()
+        for k, cell in enumerate(piston_cells):
+            h_next.flat[cell] += a[k, step]
         h_prev, h_curr = h_curr, h_next
-    return snaps  # snaps[a-1] = field at age a
+    return h_curr.ravel()
+
+
+def _impulse_snapshots(n, piston_idx, dx, c2dt2, damp, T) -> np.ndarray:
+    """Field snapshots R[m] (m=1..T) after injecting a unit into h_next from one
+    piston at step 0 only, then free evolution."""
+    h_prev = np.zeros((n, n))
+    h_curr = np.zeros((n, n))
+    R = np.empty((T, n * n))
+    for step in range(T):
+        h_next = _step(h_curr, h_prev, dx, c2dt2, damp)
+        if step == 0:
+            h_next.flat[piston_idx] += 1.0
+        R[step] = h_next.ravel()          # R[step] = field at time step+1
+        h_prev, h_curr = h_curr, h_next
+    return R
 
 
 def build_basis_matrix(n, dx, c2dt2, damp, piston_cells, T) -> np.ndarray:
-    """Assemble M ∈ R^{N × P·T}. Column (k,τ) = b_k(·, T−τ), i.e. piston k's
-    impulse response at age (T−τ). One forward sim per piston."""
+    """Assemble M ∈ R^{N × P·T}, column (k,τ) = surface at focal time T from a
+    unit injection by piston k at step τ. By time-shift invariance of the free
+    evolution this is R_k[T−1−τ], so one sim per piston suffices (verified to
+    match brute-force column-by-column playback to machine precision)."""
     P = len(piston_cells)
     M = np.empty((n * n, P * T))
     for kp, pidx in enumerate(piston_cells):
-        snaps = impulse_response(n, pidx, dx, c2dt2, damp, T)
+        R = _impulse_snapshots(n, pidx, dx, c2dt2, damp, T)
         for tau in range(T):
-            age = T - tau                 # age ∈ [1, T]
-            M[:, kp * T + tau] = snaps[age - 1]
+            M[:, kp * T + tau] = R[T - 1 - tau]
     return M
 
 

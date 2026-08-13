@@ -22,12 +22,12 @@ import json
 import os
 import numpy as np
 
-from actuation import perimeter_pistons, build_basis_matrix
+from actuation import perimeter_pistons, build_basis_matrix, forward_playback
 
 GRAVITY = 9.81
 
 
-def build_export(n=16, dx=0.02, depth=0.05, gamma=0.2, P=8, T=12, lam=1e-2):
+def build_export(n=16, dx=0.02, depth=0.05, gamma=0.2, P=12, T=20, lam=1e-2):
     c = np.sqrt(GRAVITY * depth)
     dt = 0.9 * dx / (c * np.sqrt(2))          # 0.9× CFL (eq 4.8)
     c2dt2 = c * c * dt * dt
@@ -51,6 +51,8 @@ def build_export(n=16, dx=0.02, depth=0.05, gamma=0.2, P=8, T=12, lam=1e-2):
         "geometry": {
             "n": int(n),
             "dx": float(dx),
+            "depth": float(depth),      # sets wave speed c=√(gH) for the forward sim
+            "gamma": float(gamma),      # damping γ
             "pistonCount": int(piston_count),
             "numSteps": int(T),
             "lambda": float(lam),
@@ -81,11 +83,23 @@ def main() -> None:
         json.dump(doc, f)
     g = doc["geometry"]
     size_kb = os.path.getsize(out) / 1024
+
+    # Closed-loop sanity: replay the exported schedule, check it reconstructs h_t.
+    c = np.sqrt(GRAVITY * g["depth"])
+    c2dt2 = c * c * g["dt"] * g["dt"]
+    damp = 0.5 * g["gamma"] * g["dt"]
+    a = np.array(doc["sample"]["aExpected"]).reshape(g["pistonCount"], g["numSteps"])
+    h_t = np.array(doc["sample"]["hT"])
+    play = forward_playback(g["pistonCells"], a, g["n"], g["dx"], c2dt2, damp)
+    rel = np.linalg.norm(play - h_t) / np.linalg.norm(h_t)
+    corr = np.corrcoef(play, h_t)[0, 1]
+
     print("exported M⁺ asset")
     print(f"  geometry: n={g['n']} pistons={g['pistonCount']} T={g['numSteps']} "
           f"λ={g['lambda']}")
     print(f"  pinv: {doc['pinv']['rows']}×{doc['pinv']['cols']}  "
           f"({size_kb:.0f} KB JSON)")
+    print(f"  closed-loop forward-sim reconstructs hₜ: rel_err={rel:.3e} corr={corr:.4f}")
     print(f"  -> {out}")
 
 

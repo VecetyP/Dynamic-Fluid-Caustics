@@ -8,6 +8,37 @@
 
 import { waveSpeed, type WaveParams } from "../../physics.ts";
 
+/**
+ * Forward-replay a PistonSchedule and return the surface at focal time T.
+ *
+ * The canonical actuation model shared by the whole pipeline (M4 basis, this CPU
+ * reference, and the M5 GPU sim): each step, advance the free leapfrog, THEN
+ * additively inject each piston's amplitude for that step into the new surface
+ * at its cell. Because the M4 wave-basis is built from this exact operator, a
+ * schedule a* = M⁺·h_t replayed here reconstructs h_t at focal time — the
+ * closed-loop check in closed_loop.test.ts.
+ *
+ * @param pistonCells flat grid indices of the P pistons
+ * @param a           amplitudes, row-major [P][T] (== PistonSchedule.a)
+ */
+export function forwardPlayback(
+  params: WaveParams,
+  dt: number,
+  pistonCells: ArrayLike<number>,
+  a: ArrayLike<number>,
+  numPistons: number,
+  numSteps: number
+): Float32Array {
+  const w = new WaveFieldCPU(params, dt);
+  for (let step = 0; step < numSteps; step++) {
+    w.step();
+    for (let k = 0; k < numPistons; k++) {
+      w.curr[pistonCells[k]] += a[k * numSteps + step];
+    }
+  }
+  return w.curr;
+}
+
 export class WaveFieldCPU {
   readonly n: number;
   curr: Float32Array;

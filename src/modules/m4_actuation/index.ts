@@ -20,6 +20,8 @@ export interface PinvAsset {
   geometry: {
     n: number;
     dx: number;
+    depth: number;
+    gamma: number;
     pistonCount: number;
     numSteps: number;
     lambda: number;

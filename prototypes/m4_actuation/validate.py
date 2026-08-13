@@ -23,6 +23,7 @@ from actuation import (
     build_basis_matrix,
     solve_least_squares,
     solve_adjoint,
+    forward_playback,
 )
 
 # Shallow-water params (match the app defaults, scaled down for a fast prototype).
@@ -103,9 +104,17 @@ def main() -> None:
     print(f"least-squares (λ knee) : rel_err={rel_l2(recon_ls, h_t):.3e}  "
           f"corr={corr(recon_ls, h_t):.4f}")
 
-    ok = corr_star > 0.9 and corr(recon_adj, h_t) > 0.5
+    # Closed-loop check: replaying a* through the actual forward sim must equal
+    # the matvec M a* (they share one actuation operator) and reconstruct h_t.
+    a_grid = a_ls.reshape(len(piston_cells), T)
+    play = forward_playback(piston_cells, a_grid, n, dx, c2dt2, damp)
+    print(f"forward-sim vs matvec ‖Δ‖/‖·‖ = {rel_l2(play, recon_ls):.3e}  (want ~1e-15)")
+    print(f"forward-sim reconstructs hₜ  : rel_err={rel_l2(play, h_t):.3e}  "
+          f"corr={corr(play, h_t):.4f}")
+
+    ok = corr_star > 0.9 and corr(recon_adj, h_t) > 0.5 and rel_l2(play, recon_ls) < 1e-9
     print(f"\nRESULT: {'PASS' if ok else 'FAIL'}  "
-          f"(LS recovers target; adjoint already recognisable)")
+          f"(LS recovers target; adjoint recognisable; forward-sim == matvec)")
 
     _save_figure(n, h_t, recon_ls, recon_adj, rows, knee)
 
