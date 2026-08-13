@@ -80,7 +80,10 @@ async function boot(): Promise<void> {
 
   // Drawing pad (M1).
   const drawCanvas = document.getElementById("draw-canvas") as HTMLCanvasElement;
-  const drawing = new DrawingCanvas(drawCanvas);
+  const drawing = new DrawingCanvas(drawCanvas, 18);
+
+  const speedEl = document.getElementById("speed") as HTMLInputElement;
+  speedEl.addEventListener("input", () => orch.setSpeed(parseFloat(speedEl.value)));
 
   document.getElementById("solve-btn")!.addEventListener("click", () => {
     try {

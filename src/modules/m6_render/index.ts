@@ -2,8 +2,11 @@
  * M6 · GPU Render Pipeline.
  *
  * Per frame: (1) derive surface normals from M5's height texture; (2) splat one
- * refracted ray per cell onto a floating-point floor accumulator via additive
- * blending (path B); (3) tone-map the accumulator to the swap-chain.
+ * refracted ray per RENDER cell onto a floating-point floor accumulator via
+ * additive blending (path B); (3) tone-map the accumulator to the swap-chain.
+ *
+ * The render grid (`renderRes`) is decoupled from the sim grid: normals are
+ * bilinearly sampled, so a coarse sim yields a high-resolution caustic.
  */
 
 import type { FluidState } from "../../contracts/index.ts";
@@ -15,19 +18,17 @@ import toneWgsl from "./tone.wgsl?raw";
 const WG = 16;
 
 export interface RenderOptions {
-  /** Focal distance surface → floor (m). */
-  focalDistance: number;
-  /** Relative refractive index n2/n1 (water ≈ 1.333). */
-  nRel: number;
-  /** Energy deposited per cell splat. */
-  cellEnergy: number;
-  /** Tone-map exposure. */
-  exposure: number;
+  focalDistance: number; // surface → floor (m)
+  nRel: number; // relative refractive index n2/n1
+  cellEnergy: number; // energy per splat (auto-scaled for renderRes)
+  exposure: number; // tone-map exposure
+  renderRes?: number; // caustic render grid dim (default 128)
 }
 
 export class CausticRenderer {
   private readonly device: GPUDevice;
   private readonly n: number;
+  private readonly res: number;
 
   private readonly normalPipe: GPUComputePipeline;
   private readonly causticPipe: GPURenderPipeline;
@@ -46,13 +47,14 @@ export class CausticRenderer {
   constructor(device: GPUDevice, n: number, dx: number, format: GPUTextureFormat, opts: RenderOptions) {
     this.device = device;
     this.n = n;
+    this.res = opts.renderRes ?? 128;
 
     this.normalPipe = createComputePipeline(device, normalsWgsl, "m6.normals");
 
-    // Floating-point floor accumulator (path B target). rgba16float is blendable.
+    // Floating-point floor accumulator at RENDER resolution (path B target).
     this.accum = device.createTexture({
       label: "m6.floor_accum",
-      size: { width: n, height: n },
+      size: { width: this.res, height: this.res },
       format: "rgba16float",
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
@@ -100,18 +102,21 @@ export class CausticRenderer {
     ndv.setFloat32(4, dx, true);
     device.queue.writeBuffer(this.nParams, 0, nb);
 
-    // CParams { n, dx, d, nRel, cellEnergy, pad×3 }
+    // CParams { n, res, dx, d, nRel, cellEnergy, pad, pad }.
+    // Scale per-ray energy by (n/res)² so total deposited energy — hence overall
+    // brightness — is independent of the render resolution.
+    const energy = opts.cellEnergy * (n * n) / (this.res * this.res);
     const cb = new ArrayBuffer(32);
     const cdv = new DataView(cb);
     cdv.setUint32(0, n, true);
-    cdv.setFloat32(4, dx, true);
-    cdv.setFloat32(8, opts.focalDistance, true);
-    cdv.setFloat32(12, opts.nRel, true);
-    cdv.setFloat32(16, opts.cellEnergy, true);
+    cdv.setUint32(4, this.res, true);
+    cdv.setFloat32(8, dx, true);
+    cdv.setFloat32(12, opts.focalDistance, true);
+    cdv.setFloat32(16, opts.nRel, true);
+    cdv.setFloat32(20, energy, true);
     device.queue.writeBuffer(this.cParams, 0, cb);
 
     this.setExposure(opts.exposure);
-
     this.sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
   }
 
@@ -121,15 +126,14 @@ export class CausticRenderer {
     this.device.queue.writeBuffer(this.tParams, 0, tb);
   }
 
-  /** Bind groups that depend on M5's (rotating) height/normal textures. */
   private ensureBinds(fluid: FluidState): void {
-    // caustic reads the normal texture (fixed handle) → build once.
     if (!this.causticBind) {
       this.causticBind = this.device.createBindGroup({
         layout: this.causticPipe.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: fluid.normalTex.createView() },
-          { binding: 1, resource: { buffer: this.cParams } },
+          { binding: 1, resource: this.sampler },
+          { binding: 2, resource: { buffer: this.cParams } },
         ],
       });
     }
@@ -164,7 +168,8 @@ export class CausticRenderer {
     np.dispatchWorkgroups(g, g);
     np.end();
 
-    // (2) Caustic splat — clear accumulator, then additive-blend one point/cell.
+    // (2) Caustic splat — clear accumulator, then additive-blend one point per
+    // render cell (renderRes²).
     const cp = encoder.beginRenderPass({
       label: "m6.caustic",
       colorAttachments: [
@@ -178,7 +183,7 @@ export class CausticRenderer {
     });
     cp.setPipeline(this.causticPipe);
     cp.setBindGroup(0, this.causticBind);
-    cp.draw(this.n * this.n); // one point per cell
+    cp.draw(this.res * this.res);
     cp.end();
 
     // (3) Tone pass → swap-chain.

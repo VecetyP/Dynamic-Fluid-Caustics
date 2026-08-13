@@ -44,6 +44,7 @@ export class Orchestrator {
   private phase: "building" | "hold" = "building";
   private frameCounter = 0;
   private holdCounter = 0;
+  private speed = 1; // playback speed multiplier (slider-controlled)
 
   constructor(gpu: GpuContext, cfg: OrchestratorConfig = {}) {
     this.gpu = gpu;
@@ -93,7 +94,7 @@ export class Orchestrator {
       if (this.phase === "hold") {
         doStep = false; // freeze the focal surface → steady caustic
       } else {
-        doStep = this.frameCounter % FRAMES_PER_STEP === 0; // pace the build-up
+        doStep = this.frameCounter % this.framesPerStep() === 0; // pace the build-up
         pistonStep = doStep ? this.cursor : null;
       }
     }
@@ -115,7 +116,7 @@ export class Orchestrator {
     } else {
       // Holding the focused image; after a beat, reset and re-pulse (spec §9).
       this.holdCounter++;
-      if (this.holdCounter >= HOLD_FRAMES) {
+      if (this.holdCounter >= this.holdFrames()) {
         this.sim.reset();
         this.cursor = 0;
         this.holdCounter = 0;
@@ -126,6 +127,19 @@ export class Orchestrator {
 
   setExposure(e: number): void {
     this.renderer.setExposure(e);
+  }
+
+  /** Playback speed multiplier (1 = default). Higher = faster build-up + hold. */
+  setSpeed(s: number): void {
+    this.speed = Math.max(0.1, Math.min(8, s));
+  }
+
+  private framesPerStep(): number {
+    return Math.max(1, Math.round(FRAMES_PER_STEP / this.speed));
+  }
+
+  private holdFrames(): number {
+    return Math.max(1, Math.round(HOLD_FRAMES / this.speed));
   }
 
   destroy(): void {

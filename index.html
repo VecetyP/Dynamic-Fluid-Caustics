@@ -16,10 +16,13 @@
         gap: 28px; flex-wrap: wrap; }
       .pane { display: flex; flex-direction: column; gap: 8px; align-items: center; }
       .label { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: .08em; }
-      canvas { border: 1px solid #1e293b; image-rendering: pixelated; }
-      #draw-canvas { width: 320px; height: 320px; background: #000; cursor: crosshair; touch-action: none; }
-      #gpu-canvas { width: 320px; height: 320px; }
-      .controls { display: flex; gap: 8px; }
+      canvas { border: 1px solid #1e293b; }
+      #draw-canvas { width: 440px; height: 440px; background: #000; cursor: crosshair;
+        touch-action: none; image-rendering: pixelated; }
+      #gpu-canvas { width: 480px; height: 480px; }
+      .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; }
+      .slider { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #94a3b8; }
+      .slider input[type=range] { accent-color: #2dd4bf; width: 160px; }
       button { background: #14304a; color: #cbd5e1; border: 1px solid #245; border-radius: 6px;
         padding: 6px 12px; font-size: 13px; cursor: pointer; }
       button:hover { background: #1c3d5e; }
@@ -34,7 +37,7 @@
       <div id="stage">
         <div class="pane">
           <div class="label">1 · Draw a target</div>
-          <canvas id="draw-canvas" width="128" height="128"></canvas>
+          <canvas id="draw-canvas" width="256" height="256"></canvas>
           <div class="controls">
             <button id="solve-btn" class="primary">Solve → Caustic</button>
             <button id="demo-btn">Demo bump</button>
@@ -43,7 +46,12 @@
         </div>
         <div class="pane">
           <div class="label">2 · Caustic on the tank floor</div>
-          <canvas id="gpu-canvas" width="512" height="512"></canvas>
+          <canvas id="gpu-canvas" width="640" height="640"></canvas>
+          <div class="controls">
+            <label class="slider">Speed
+              <input type="range" id="speed" min="0.3" max="4" step="0.05" value="1" />
+            </label>
+          </div>
         </div>
       </div>
       <div id="hint">Draw with the mouse, then Solve. The inverse solver computes a water
