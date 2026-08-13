@@ -4,11 +4,12 @@ dist/
 *.local
 .vite/
 
-# Vite temp files
-vite.config.ts.timestamp-*.mjs
+# Vite/Vitest temp files
+*.timestamp-*.mjs
 
 # Local-only working notes (you + assistant), not for the repo
 PROGRESS.md
+NEXT_CHAT_PROMPT.md
 
 # Python prototype caches
 __pycache__/
