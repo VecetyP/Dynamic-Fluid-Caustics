@@ -43,20 +43,30 @@ def _step(h_curr, h_prev, dx, c2dt2, damp):
 
 
 def perimeter_pistons(n: int, count: int) -> np.ndarray:
-    """Return `count` grid indices spaced evenly around the tank perimeter ring."""
-    ring = []
-    for i in range(n):
-        ring.append((0, i))          # top
-    for j in range(1, n):
-        ring.append((j, n - 1))      # right
-    for i in range(n - 2, -1, -1):
-        ring.append((n - 1, i))      # bottom
-    for j in range(n - 2, 0, -1):
-        ring.append((j, 0))          # left
-    ring = np.array(ring)
-    sel = np.linspace(0, len(ring) - 1, count).round().astype(int)
-    sel = np.unique(sel)
-    cells = ring[sel]
+    """Return `count` grid indices placed SYMMETRICALLY around the tank perimeter.
+
+    `count` must be a multiple of 4: it is split evenly across the four sides, and
+    each side gets the same interior positions (no pistons on the corners, so no
+    two land on nearly the same spot). The four sides are populated in a
+    rotationally-consistent order, so the layout is symmetric under 90° rotation —
+    which is what makes the wavemakers look evenly spaced on every wall.
+    """
+    if count % 4 != 0:
+        raise ValueError(f"piston count must be a multiple of 4 for symmetry, got {count}")
+    m = count // 4  # pistons per side
+    # Interior positions along a side of length n (coords 0..n-1), evenly spaced
+    # and symmetric about the side midpoint (endpoints excluded ⇒ no corners).
+    ts = [int(round((j + 1) / (m + 1) * (n - 1))) for j in range(m)]
+    cells = []
+    for t in ts:
+        cells.append((0, t))            # top    (row 0)
+    for t in ts:
+        cells.append((t, n - 1))        # right  (col n-1)
+    for t in ts:
+        cells.append((n - 1, n - 1 - t))  # bottom (row n-1), mirrored for rotation
+    for t in ts:
+        cells.append((n - 1 - t, 0))    # left   (col 0),   mirrored for rotation
+    cells = np.array(cells)
     return cells[:, 0] * n + cells[:, 1]
 
 

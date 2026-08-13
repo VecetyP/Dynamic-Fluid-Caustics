@@ -13,6 +13,7 @@ import type { PistonSchedule } from "../../contracts/index.ts";
 import { FluidSim } from "../m5_fluid/index.ts";
 import { CausticRenderer, type RenderOptions } from "../m6_render/index.ts";
 import { DEFAULT_PARAMS, type WaveParams } from "../../physics.ts";
+import { BASE_STEP_SECONDS, BASE_HOLD_SECONDS } from "../../playback_timing.ts";
 
 export type SimState = "IDLE" | "INTERACTIVE" | "PULSE";
 
@@ -28,12 +29,10 @@ const DEFAULT_RENDER: RenderOptions = {
   exposure: 1.5,
 };
 
-// Pulse pacing (visual only — physics still advances exactly one step per
-// injected cursor). Spread the T build-up steps over more frames so the
-// convergence is watchable, then hold the focal surface so the caustic is a
-// steady image instead of a 60 Hz strobe.
-const FRAMES_PER_STEP = 3; // render this many frames per physics step during build-up
-const HOLD_FRAMES = 150; // ~2.5 s holding the focused caustic before re-pulsing
+// Pulse pacing is WALL-CLOCK (seconds), shared with the 3D water player via
+// playback_timing.ts so the 2D caustic preview and the 3D view stay in step.
+// Physics still advances exactly one step per injected cursor; we just pace the
+// steps by elapsed time and hold the focal surface as a steady image.
 
 export class Orchestrator {
   state: SimState = "INTERACTIVE";
@@ -42,8 +41,7 @@ export class Orchestrator {
   private readonly gpu: GpuContext;
   private cursor = 0;
   private phase: "building" | "hold" = "building";
-  private frameCounter = 0;
-  private holdCounter = 0;
+  private accum = 0; // seconds accumulated toward the next step / hold end
   private speed = 1; // playback speed multiplier (slider-controlled)
 
   constructor(gpu: GpuContext, cfg: OrchestratorConfig = {}) {
@@ -72,8 +70,7 @@ export class Orchestrator {
     this.sim.reset();
     this.cursor = 0;
     this.phase = "building";
-    this.frameCounter = 0;
-    this.holdCounter = 0;
+    this.accum = 0;
     this.state = "PULSE";
   }
 
@@ -83,8 +80,9 @@ export class Orchestrator {
     return t > 0 ? this.cursor / t : 0;
   }
 
-  /** One tick: advance the fluid (when due) and render the caustic. */
-  frame(): void {
+  /** One tick: advance the fluid (when due, paced by `dt` seconds) and render the
+   *  caustic every frame. `dt` is real elapsed seconds since the last frame. */
+  frame(dt = 1 / 60): void {
     if (this.state === "IDLE") return;
 
     // Decide whether to advance the physics this frame, and with what injection.
@@ -94,8 +92,15 @@ export class Orchestrator {
       if (this.phase === "hold") {
         doStep = false; // freeze the focal surface → steady caustic
       } else {
-        doStep = this.frameCounter % this.framesPerStep() === 0; // pace the build-up
-        pistonStep = doStep ? this.cursor : null;
+        const sd = BASE_STEP_SECONDS / this.speed;
+        this.accum += dt;
+        if (this.accum >= sd) {
+          this.accum = Math.min(this.accum - sd, sd); // one step/frame, no runaway
+          doStep = true;
+          pistonStep = this.cursor;
+        } else {
+          doStep = false;
+        }
       }
     }
 
@@ -105,21 +110,23 @@ export class Orchestrator {
     this.renderer.encode(encoder, this.sim.state, swapView);
     this.gpu.device.queue.submit([encoder.finish()]);
 
-    this.frameCounter++;
     if (this.state !== "PULSE") return;
 
     if (this.phase === "building") {
       if (doStep) {
         this.cursor++;
-        if (this.cursor >= this.sim.numSteps) this.phase = "hold"; // focal reached
+        if (this.cursor >= this.sim.numSteps) {
+          this.phase = "hold"; // focal reached
+          this.accum = 0;
+        }
       }
     } else {
       // Holding the focused image; after a beat, reset and re-pulse (spec §9).
-      this.holdCounter++;
-      if (this.holdCounter >= this.holdFrames()) {
+      this.accum += dt;
+      if (this.accum >= BASE_HOLD_SECONDS / this.speed) {
         this.sim.reset();
         this.cursor = 0;
-        this.holdCounter = 0;
+        this.accum = 0;
         this.phase = "building";
       }
     }
@@ -132,14 +139,6 @@ export class Orchestrator {
   /** Playback speed multiplier (1 = default). Higher = faster build-up + hold. */
   setSpeed(s: number): void {
     this.speed = Math.max(0.1, Math.min(8, s));
-  }
-
-  private framesPerStep(): number {
-    return Math.max(1, Math.round(FRAMES_PER_STEP / this.speed));
-  }
-
-  private holdFrames(): number {
-    return Math.max(1, Math.round(HOLD_FRAMES / this.speed));
   }
 
   destroy(): void {

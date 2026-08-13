@@ -6,9 +6,9 @@
     <title>Dynamic Fluid Caustics</title>
     <style>
       :root { color-scheme: dark; }
-      html, body { margin: 0; height: 100%; background: #0b0e11; color: #cbd5e1;
-        font-family: system-ui, sans-serif; }
-      #app { display: flex; flex-direction: column; height: 100%; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e11;
+        color: #cbd5e1; font-family: system-ui, sans-serif; }
+      #app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
       header { padding: 8px 14px; font-size: 13px; letter-spacing: .04em;
         border-bottom: 1px solid #1e293b; flex: 0 0 auto; }
       header b { color: #2dd4bf; }
@@ -16,19 +16,26 @@
       /* Main workspace: left control panel + large 3D viewport. */
       #workspace { flex: 1 1 auto; display: flex; min-height: 0; }
 
-      #panel { flex: 0 0 300px; overflow-y: auto; padding: 14px;
-        border-right: 1px solid #1e293b; display: flex; flex-direction: column; gap: 16px; }
-      .group { display: flex; flex-direction: column; gap: 8px; }
-      .label { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: .08em; }
+      #panel { flex: 0 0 300px; padding: 12px; border-right: 1px solid #1e293b;
+        display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+      .group { display: flex; flex-direction: column; gap: 6px; min-height: 0;
+        flex: 1 1 0; }
+      .label { font-size: 12px; color: #94a3b8; text-transform: uppercase;
+        letter-spacing: .08em; flex: 0 0 auto; }
+      .canvas-wrap { flex: 1 1 0; min-height: 0; display: flex;
+        align-items: center; justify-content: center; }
       canvas { border: 1px solid #1e293b; display: block; }
-      #draw-canvas { width: 272px; height: 272px; background: #000; cursor: crosshair;
-        touch-action: none; image-rendering: pixelated; }
-      #gpu-canvas { width: 272px; height: 272px; }
-      .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-      .slider { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #94a3b8; }
+      .canvas-wrap canvas { max-width: 100%; max-height: 100%; width: auto;
+        height: auto; aspect-ratio: 1 / 1; }
+      #draw-canvas { background: #000; cursor: crosshair; touch-action: none;
+        image-rendering: pixelated; }
+      .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+        flex: 0 0 auto; }
+      .slider { display: flex; align-items: center; gap: 8px; font-size: 12px;
+        color: #94a3b8; flex: 0 0 auto; }
       .slider input[type=range] { accent-color: #2dd4bf; width: 150px; }
-      button { background: #14304a; color: #cbd5e1; border: 1px solid #245; border-radius: 6px;
-        padding: 6px 12px; font-size: 13px; cursor: pointer; }
+      button { background: #14304a; color: #cbd5e1; border: 1px solid #245;
+        border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
       button:hover { background: #1c3d5e; }
       button.primary { background: #0d5f57; border-color: #2dd4bf; color: #e8fffb; }
 
@@ -51,7 +58,9 @@
         <aside id="panel">
           <div class="group">
             <div class="label">1 · Draw a target</div>
-            <canvas id="draw-canvas" width="256" height="256"></canvas>
+            <div class="canvas-wrap">
+              <canvas id="draw-canvas" width="256" height="256"></canvas>
+            </div>
             <div class="controls">
               <button id="solve-btn" class="primary">Solve → Caustic</button>
               <button id="demo-btn">Demo bump</button>
@@ -61,11 +70,11 @@
 
           <div class="group">
             <div class="label">Target caustic (preview)</div>
-            <canvas id="gpu-canvas" width="640" height="640"></canvas>
-            <div class="controls">
-              <label class="slider">Speed
-                <input type="range" id="speed" min="0.3" max="4" step="0.05" value="1" />
-              </label>
+            <div class="canvas-wrap">
+              <canvas id="gpu-canvas" width="640" height="640"></canvas>
+            </div>
+            <div class="slider">Speed
+              <input type="range" id="speed" min="0.3" max="4" step="0.05" value="1" />
             </div>
           </div>
         </aside>

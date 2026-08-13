@@ -16,6 +16,7 @@ import { InverseCausticSolver } from "./modules/m3_inverse/index.ts";
 import { ActuationMapper, type PinvAsset } from "./modules/m4_actuation/index.ts";
 import { Stage3D } from "./modules/m8_stage3d/index.ts";
 import { CpuWaterPlayer } from "./modules/m8_stage3d/water_player.ts";
+import { CausticPainter } from "./modules/m8_stage3d/floor_caustic.ts";
 import type { PistonSchedule } from "./contracts/index.ts";
 import type { WaveParams } from "./physics.ts";
 import pinvAsset from "./modules/m4_actuation/__fixtures__/pinv_small.json";
@@ -69,13 +70,24 @@ async function boot(): Promise<void> {
     cflSafety: 0.9,
   };
   const player = new CpuWaterPlayer();
-  // M-C: plunger meshes at the perimeter piston cells, driven in lockstep.
+  // M-C: wavemaker paddles at the perimeter piston cells, driven in lockstep.
   stage.buildPistons(pistonCells, g.n);
+  // M-D: the caustic on the 3D floor is recomputed on the CPU from the SAME water
+  // field (a WebGPU canvas can't be sampled as a WebGL texture), painted to a 2D
+  // canvas the floor displays.
+  const floorCaustic = new CausticPainter({ d: FOCAL_D, nRel: N_REL, dx: g.dx });
+  stage.setFloorCaustic(floorCaustic.canvas);
+
+  const heightBuf = new Float32Array(g.n * g.n);
   const pistonBuf = new Float32Array(g.pistonCount);
-  stage.onFrame = () => {
-    player.tick();
-    stage.displaceWater(player.height(), player.n);
-    stage.setPistonOffsets(player.pistonAmplitudes(pistonBuf));
+  // Smooth, frame-rate-independent playback: feed the real frame dt so the water
+  // and paddles interpolate between physics steps (no staircase jitter).
+  stage.onFrame = (dt) => {
+    player.tick(dt);
+    const field = player.renderHeight(heightBuf);
+    stage.displaceWater(field, player.n);
+    stage.setPistonOffsets(player.renderPistons(pistonBuf));
+    floorCaustic.paint(field, player.n); // refresh the floor caustic
   };
   stage.start();
 
@@ -150,9 +162,12 @@ async function boot(): Promise<void> {
   // Show the demo target immediately so the caustic isn't blank on load.
   runTarget(asset.sample!.hT, "Demo bump");
 
-  const loop = () => {
+  let lastT = performance.now();
+  const loop = (now: number) => {
+    const dt = Math.min(0.05, (now - lastT) / 1000);
+    lastT = now;
     try {
-      orch.frame();
+      orch.frame(dt); // wall-clock paced, shared with the 3D player's clock
     } catch (err) {
       showError(err);
       return;

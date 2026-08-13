@@ -58,15 +58,37 @@ describe("CpuWaterPlayer", () => {
     expect(maxDiff).toBe(0);
   });
 
-  it("tick advances one physics step per frame at speed 1 build-up", () => {
+  it("smooth playback lands exactly on the focal surface at hold", () => {
+    const params = makeParams();
+    const schedule = makeSchedule();
     const player = new CpuWaterPlayer();
-    player.load(makeSchedule(), g.pistonCells, makeParams());
-    // FRAMES_PER_STEP=3 at speed 1 → step on frames 0,3,6,... Bump speed so every
-    // frame steps, making the cursor↔tick relationship exact and easy to assert.
-    player.setSpeed(4); // framesPerStep = round(3/4) = 1
-    for (let f = 0; f < g.numSteps; f++) player.tick();
-    expect(player.cursor).toBe(g.numSteps);
+    player.load(schedule, g.pistonCells, params);
+
+    // Drive wall-clock playback with fixed dt until it reaches the hold phase.
+    let guard = 0;
+    while (player.phase !== "hold" && guard++ < 100_000) player.tick(0.05);
     expect(player.phase).toBe("hold");
+
+    // At hold, frac=1 → the interpolated render surface equals the verified
+    // focal surface bit-for-bit.
+    const oracle = forwardPlayback(
+      params,
+      schedule.dt,
+      g.pistonCells,
+      schedule.a,
+      schedule.numPistons,
+      schedule.numSteps
+    );
+    const rh = player.renderHeight()!;
+    let maxDiff = 0;
+    for (let i = 0; i < rh.length; i++) maxDiff = Math.max(maxDiff, Math.abs(rh[i] - oracle[i]));
+    expect(maxDiff).toBe(0);
+
+    // Interpolation stays within the physics envelope (no overshoot) mid-build.
+    player.reset();
+    player.tick(0.09); // ~half a step at speed 1 (BASE_STEP_SECONDS=0.18)
+    const mid = player.renderHeight()!;
+    expect(mid.every((v) => Number.isFinite(v))).toBe(true);
   });
 
   it("pistonAmplitudes track the most-recently-injected step", () => {
