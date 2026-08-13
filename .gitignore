@@ -3,3 +3,9 @@ dist/
 .DS_Store
 *.local
 .vite/
+
+# Vite temp files
+vite.config.ts.timestamp-*.mjs
+
+# Local-only working notes (you + assistant), not for the repo
+PROGRESS.md
