@@ -69,9 +69,13 @@ async function boot(): Promise<void> {
     cflSafety: 0.9,
   };
   const player = new CpuWaterPlayer();
+  // M-C: plunger meshes at the perimeter piston cells, driven in lockstep.
+  stage.buildPistons(pistonCells, g.n);
+  const pistonBuf = new Float32Array(g.pistonCount);
   stage.onFrame = () => {
     player.tick();
     stage.displaceWater(player.height(), player.n);
+    stage.setPistonOffsets(player.pistonAmplitudes(pistonBuf));
   };
   stage.start();
 
@@ -100,6 +104,9 @@ async function boot(): Promise<void> {
     const schedule: PistonSchedule = mapper.solve(normalizePeak(hT, demoPeak));
     orch.startPulse(schedule, pistonCells); // 2D caustic preview
     player.load(schedule, pistonCells, waveParams); // 3D water surface
+    // Scale paddle travel so the strongest stroke reads clearly (~0.14·tankSize).
+    const pAmp = player.maxAbsAmplitude();
+    stage.pistonTravelScale = pAmp > 0 ? (0.14 * stage.cfg.tankSize) / pAmp : 0.15;
     hintEl.textContent = `${label} — the caustic pulses into the target. Draw again and Solve to change it.`;
   };
 

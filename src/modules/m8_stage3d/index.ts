@@ -60,6 +60,13 @@ export class Stage3D {
   private waterU!: Float32Array;
   private waterV!: Float32Array;
 
+  /** World travel per unit of piston amplitude — paddles slide in/out (M-C). */
+  pistonTravelScale = 0.15;
+  private pistons: THREE.Mesh[] = [];
+  private pistonBase: THREE.Vector3[] = [];
+  /** Inward horizontal unit vector (in XZ) each paddle pushes along. */
+  private pistonDir: THREE.Vector3[] = [];
+
   private readonly container: HTMLElement;
   private readonly resizeObserver: ResizeObserver;
   private rafId = 0;
@@ -174,6 +181,89 @@ export class Stage3D {
   /** Flatten the water surface (idle state). */
   flattenWater(): void {
     this.displaceWater(null, 0);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Pistons (M-C)
+  // ---------------------------------------------------------------------------
+
+  /** Place a wavemaker PADDLE at each perimeter piston cell. Each paddle is a
+   *  thin vertical plate mounted flush to its wall; it translates horizontally
+   *  in/out along the wall's inward normal (like a piston-type wavemaker), which
+   *  is what drives the surface. `cells` are flat grid indices (cell = iy*n + ix)
+   *  in `PistonSchedule` order; `n` is the sim grid. Idempotent. */
+  buildPistons(cells: ArrayLike<number>, n: number): void {
+    for (const p of this.pistons) {
+      this.scene.remove(p);
+      p.geometry.dispose();
+    }
+    this.pistons = [];
+    this.pistonBase = [];
+    this.pistonDir = [];
+
+    const { tankSize: S, tankDepth: D } = this.cfg;
+    const cellW = n > 1 ? S / (n - 1) : S;
+    const plateW = cellW * 0.85; // span along the wall
+    const plateT = cellW * 0.22; // thickness (inward)
+    const plateH = D * 0.8; // spans most of the water column
+    const topY = D * 0.06; // top just above the still water line
+    const baseY = topY - plateH / 2;
+
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xa8b6c6,
+      metalness: 0.7,
+      roughness: 0.35,
+      emissive: 0x0a1016,
+    });
+
+    for (let k = 0; k < cells.length; k++) {
+      const cell = cells[k];
+      const ix = cell % n;
+      const iy = Math.floor(cell / n);
+      const { x, z } = this.gridToWorld(ix, iy);
+
+      // Inward normal: which wall is this cell on? (points toward tank centre)
+      let dx = ix === 0 ? 1 : ix === n - 1 ? -1 : 0;
+      let dz = iy === 0 ? 1 : iy === n - 1 ? -1 : 0;
+      if (dx !== 0 && dz !== 0) {
+        const inv = 1 / Math.SQRT2; // corner: push diagonally inward
+        dx *= inv;
+        dz *= inv;
+      }
+
+      // Orient the plate: thin along the wall normal's dominant axis, wide along
+      // the wall. Walls are axis-aligned, so pick box dims per edge.
+      const onXWall = ix === 0 || ix === n - 1;
+      const sizeX = onXWall ? plateT : plateW;
+      const sizeZ = onXWall ? plateW : plateT;
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(sizeX, plateH, sizeZ), mat);
+
+      // Inset slightly off the glass so it doesn't clip the wall.
+      const inset = plateT * 0.5;
+      const base = new THREE.Vector3(x + dx * inset, baseY, z + dz * inset);
+      mesh.position.copy(base);
+      this.scene.add(mesh);
+      this.pistons.push(mesh);
+      this.pistonBase.push(base);
+      this.pistonDir.push(new THREE.Vector3(dx, 0, dz));
+    }
+  }
+
+  /** Slide each paddle in/out along its wall normal by its current amplitude
+   *  (× pistonTravelScale). `amps` length should equal the piston count. */
+  setPistonOffsets(amps: ArrayLike<number>): void {
+    const s = this.pistonTravelScale;
+    const nAmp = amps.length;
+    for (let k = 0; k < this.pistons.length; k++) {
+      const a = k < nAmp ? amps[k] : 0;
+      const base = this.pistonBase[k];
+      const dir = this.pistonDir[k];
+      this.pistons[k].position.set(
+        base.x + dir.x * a * s,
+        base.y,
+        base.z + dir.z * a * s
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------

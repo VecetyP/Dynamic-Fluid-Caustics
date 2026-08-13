@@ -69,6 +69,33 @@ describe("CpuWaterPlayer", () => {
     expect(player.phase).toBe("hold");
   });
 
+  it("pistonAmplitudes track the most-recently-injected step", () => {
+    const schedule = makeSchedule();
+    const player = new CpuWaterPlayer();
+    player.load(schedule, g.pistonCells, makeParams());
+
+    expect(player.pistonCount).toBe(g.pistonCount);
+    // Before any step: all zero, display step -1.
+    expect(player.displayStep()).toBe(-1);
+    expect(Array.from(player.pistonAmplitudes()).every((v) => v === 0)).toBe(true);
+
+    // After one step, amplitudes == schedule column 0 (a[k*T + 0]).
+    player.advanceStep();
+    expect(player.displayStep()).toBe(0);
+    const amps = player.pistonAmplitudes();
+    for (let k = 0; k < g.pistonCount; k++) {
+      expect(amps[k]).toBe(schedule.a[k * g.numSteps + 0]);
+    }
+
+    // After a second step, column 1.
+    player.advanceStep();
+    expect(player.displayStep()).toBe(1);
+    const amps2 = player.pistonAmplitudes();
+    for (let k = 0; k < g.pistonCount; k++) {
+      expect(amps2[k]).toBe(schedule.a[k * g.numSteps + 1]);
+    }
+  });
+
   it("reset returns the surface to rest", () => {
     const player = new CpuWaterPlayer();
     player.load(makeSchedule(), g.pistonCells, makeParams());

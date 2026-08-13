@@ -120,4 +120,36 @@ export class CpuWaterPlayer {
   height(): Float32Array | null {
     return this.w?.curr ?? null;
   }
+
+  /** Number of pistons in the loaded schedule. */
+  get pistonCount(): number {
+    return this.numPistons;
+  }
+
+  /** The schedule step whose injection is currently showing on the surface:
+   *  the most recently applied step (cursor-1), clamped; -1 before any step. */
+  displayStep(): number {
+    if (this.cursor <= 0 || this.numSteps === 0) return -1;
+    return Math.min(this.cursor - 1, this.numSteps - 1);
+  }
+
+  /** Per-piston amplitude injected at the current display step (length P). This
+   *  is what a wall piston is "doing" right now, so it drives the piston meshes
+   *  in lockstep with the water. Fills `out` if provided. Zeros before load. */
+  pistonAmplitudes(out?: Float32Array): Float32Array {
+    const P = this.numPistons;
+    const res = out && out.length >= P ? out : new Float32Array(P);
+    const s = this.displayStep();
+    for (let k = 0; k < P; k++) {
+      res[k] = s >= 0 ? this.a[k * this.numSteps + s] : 0;
+    }
+    return res;
+  }
+
+  /** Largest |amplitude| anywhere in the loaded schedule (for display scaling). */
+  maxAbsAmplitude(): number {
+    let m = 0;
+    for (let i = 0; i < this.a.length; i++) m = Math.max(m, Math.abs(this.a[i]));
+    return m;
+  }
 }
