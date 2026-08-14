@@ -13,7 +13,7 @@ import type { PistonSchedule } from "../../contracts/index.ts";
 import { FluidSim } from "../m5_fluid/index.ts";
 import { CausticRenderer, type RenderOptions } from "../m6_render/index.ts";
 import { DEFAULT_PARAMS, type WaveParams } from "../../physics.ts";
-import { BASE_STEP_SECONDS, BASE_HOLD_SECONDS } from "../../playback_timing.ts";
+import { stepSeconds, holdSeconds } from "../../playback_timing.ts";
 
 export type SimState = "IDLE" | "INTERACTIVE" | "PULSE";
 
@@ -86,22 +86,41 @@ export class Orchestrator {
     if (this.state === "IDLE") return;
 
     // Decide whether to advance the physics this frame, and with what injection.
-    let doStep = true;
+    // This pacing MIRRORS the 3D water player (water_player.ts) EXACTLY so the two
+    // views stay phase-locked: step while cursor < numSteps, and only transition to
+    // hold one step-duration AFTER the last step (the player needs that extra sd to
+    // display its final interpolation segment — matching it here is what stops the
+    // slow, speed-dependent drift between the 2D preview and the 3D floor).
+    let doStep = false;
     let pistonStep: number | null = null;
+
     if (this.state === "PULSE") {
-      if (this.phase === "hold") {
-        doStep = false; // freeze the focal surface → steady caustic
-      } else {
-        const sd = BASE_STEP_SECONDS / this.speed;
+      if (this.phase === "building") {
+        const sd = stepSeconds(this.sim.numSteps, this.speed);
         this.accum += dt;
         if (this.accum >= sd) {
-          this.accum = Math.min(this.accum - sd, sd); // one step/frame, no runaway
-          doStep = true;
-          pistonStep = this.cursor;
-        } else {
-          doStep = false;
+          this.accum -= sd; // carry the remainder exactly (like the player)
+          if (this.cursor < this.sim.numSteps) {
+            doStep = true;
+            pistonStep = this.cursor;
+            this.cursor++;
+          } else {
+            this.phase = "hold"; // one sd past the last step → focal settled
+            this.accum = 0;
+          }
+        }
+      } else {
+        // Holding the focused image; after a beat, reset and re-pulse (spec §9).
+        this.accum += dt;
+        if (this.accum >= holdSeconds(this.speed)) {
+          this.sim.reset();
+          this.cursor = 0;
+          this.accum = 0;
+          this.phase = "building";
         }
       }
+    } else {
+      doStep = true; // INTERACTIVE free-run: advance every frame
     }
 
     const encoder = this.gpu.device.createCommandEncoder({ label: "frame" });
@@ -109,27 +128,6 @@ export class Orchestrator {
     const swapView = this.gpu.context.getCurrentTexture().createView();
     this.renderer.encode(encoder, this.sim.state, swapView);
     this.gpu.device.queue.submit([encoder.finish()]);
-
-    if (this.state !== "PULSE") return;
-
-    if (this.phase === "building") {
-      if (doStep) {
-        this.cursor++;
-        if (this.cursor >= this.sim.numSteps) {
-          this.phase = "hold"; // focal reached
-          this.accum = 0;
-        }
-      }
-    } else {
-      // Holding the focused image; after a beat, reset and re-pulse (spec §9).
-      this.accum += dt;
-      if (this.accum >= BASE_HOLD_SECONDS / this.speed) {
-        this.sim.reset();
-        this.cursor = 0;
-        this.accum = 0;
-        this.phase = "building";
-      }
-    }
   }
 
   setExposure(e: number): void {
