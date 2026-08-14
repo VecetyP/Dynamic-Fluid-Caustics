@@ -6,7 +6,7 @@ You know the wobbly bright pattern at the bottom of a swimming pool? That's a ca
 light bent by the water surface. This project runs that backwards. You sketch a target
 picture, and the software works out what the water surface would have to look like to
 cast that picture on the tank floor, figures out how the wall pistons need to move to
-build that surface, simulates the waves for real, and renders the caustic that comes
+build that surface, simulates the waves, and renders the caustic that comes
 out. You get a 2D view and an orbitable 3D tank.
 
 It's written in TypeScript with WebGPU for the physics and caustic, and Three.js for
@@ -28,7 +28,7 @@ wavemaker paddles around the rim that move on the computed schedule, a rippling 
 surface, and the live caustic on the floor.
 
 If you want the math behind all of this, [`HOW_IT_WORKS.md`](./HOW_IT_WORKS.md) is a
-full walkthrough, written to stand on its own.
+full walkthrough.
 
 ## Running it
 
@@ -55,7 +55,7 @@ run the test suite on any machine.
 ## Where things live
 
 Each step is its own small module, and they only talk to each other through typed
-payloads defined in `src/contracts`. That keeps the boundaries honest.
+payloads defined in `src/contracts`.
 
 ```
 src/
