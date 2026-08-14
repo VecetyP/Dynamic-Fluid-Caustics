@@ -28,6 +28,11 @@ The interactive 3D tank shows the same physics: glass walls, wavemaker paddles
 around the rim that move on the computed schedule, a rippling water surface, and the
 live caustic on the tank floor.
 
+> **Want the math?** [`HOW_IT_WORKS.md`](./HOW_IT_WORKS.md) is a self-contained deep
+> dive into every step — the wave model, the caustic optics, the Poisson inverse, the
+> pseudoinverse actuation, and the rendering — for readers who want to know how it
+> works under the hood.
+
 ## Run
 
 ```bash
