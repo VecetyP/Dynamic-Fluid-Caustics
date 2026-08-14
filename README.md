@@ -1,20 +1,32 @@
 # Dynamic Fluid Caustics
 
-Interactive wave-control & inverse-rendering caustic simulator — WebGPU + TypeScript.
-See `Dynamic_Fluid_Caustics_Technical_Specification.pdf` for the full design and
-`Project_Kickoff.md` for the build plan.
+Draw a shape, and watch water focus light into it.
 
-## Status: Phase 1 (Engine Foundation)
+This is an interactive **inverse-caustics** simulator. You sketch (or will soon
+upload) a target image; the software solves for the transient water-surface shape
+whose refracted caustic reconstructs that image on the tank floor, computes the
+wall-piston motions that produce that surface, runs a forward wave simulation, and
+renders the resulting caustic — both as a 2D view and inside an orbitable 3D tank.
 
-Working per-frame path — poke the water surface, watch a damped ripple propagate,
-reflect off the walls, and cast a moving caustic on the floor plane.
+Built with **TypeScript + WebGPU** (2D physics/caustic) and **Three.js / WebGL**
+(the 3D tank), bundled with Vite and tested with Vitest.
 
-- **M5** damped shallow-water wave sim (leapfrog FDM, eq 4.7) on ping-pong r32float textures
-- **M6** GPU render: normal derivation → refraction splat (additive blend, spec path B) → tone map
-- **M7** minimal orchestrator + render loop
+## What it does
 
-The inverse-caustic solver (M3), actuation mapper (M4), density preprocessor (M2),
-and drawing canvas (M1) are Phases 2–4 — not yet implemented.
+Press **Solve** on a sketch and the pipeline runs end to end:
+
+1. **Draw** a target on the canvas.
+2. **Inverse solve** for the water surface that would refract light into that target
+   (a Poisson/Neumann solve on the paraxial caustic equations).
+3. **Actuation** — turn that surface into a per-piston, time-reversed amplitude
+   schedule via a precomputed regularised pseudoinverse of the wave-response matrix.
+4. **Forward simulate** the shallow-water waves driven by those pistons.
+5. **Render the caustic** — at focal time the wavefronts converge and the caustic
+   focuses into your drawing, then the whole thing re-pulses.
+
+The interactive 3D tank shows the same physics: glass walls, wavemaker paddles
+around the rim that move on the computed schedule, a rippling water surface, and the
+live caustic on the tank floor.
 
 ## Run
 
@@ -23,35 +35,63 @@ npm install
 npm run dev      # opens http://localhost:5173
 ```
 
-Requires a WebGPU browser (Chrome/Edge 113+, or Firefox/Safari with the flag).
+Requires a **WebGPU-capable browser** (Chrome/Edge 113+, or Firefox/Safari with the
+WebGPU flag enabled). The 3D tank uses WebGL and runs everywhere.
 
 ## Verify
 
 ```bash
 npm run typecheck   # tsc, no emit
-npm run test        # vitest — CFL + leapfrog reference (golden oracle)
+npm run test        # vitest — solver, actuation, and closed-loop oracle tests
+npm run build       # type-check + production bundle
 ```
 
-## Layout
+The numerics are tested against CPU "golden oracle" references (and NumPy prototypes
+under `prototypes/`), so the full inverse→forward loop is verified headlessly — no GPU
+required to run the test suite.
+
+## How it's built
+
+The pipeline is split into small, single-responsibility modules that communicate
+only through typed payloads (`src/contracts`):
 
 ```
 src/
-  contracts/    §3.2 typed payloads (module boundaries)
-  physics.ts    shared wave math + CFL (framework-free, unit-tested)
-  gpu/          device init, ping-pong textures, pipeline helpers
+  contracts/    typed payloads that define the module boundaries
+  physics.ts    shared shallow-water math + CFL stability (framework-free, tested)
+  playback_timing.ts  shared wall-clock pacing for the 2D and 3D views
+  gpu/          WebGPU device init, ping-pong textures, pipeline helpers
   modules/
-    m5_fluid/   wave sim: wave_step.wgsl + CPU reference + tests
-    m6_render/  normals.wgsl, caustic.wgsl, tone.wgsl
-    m7_orchestrator/  state machine + frame loop
-  main.ts       canvas wiring, pointer input, error surface
+    m1_canvas/       drawing canvas → greyscale target
+    m2_density/      blur / band-limit → strictly-positive density map
+    m3_inverse/      inverse-caustic Poisson solver (DCT, Neumann)
+    m4_actuation/    wave-basis pseudoinverse → piston schedule
+    m5_fluid/        forward wave sim (WGSL) + CPU reference oracle
+    m6_render/       caustic render: normals → refraction splat → tone map
+    m7_orchestrator/ pulse/hold/loop state machine + frame loop
+    m8_stage3d/      the interactive 3D tank (Three.js): water, paddles,
+                     floor caustic, camera
+prototypes/     NumPy references used to validate the solvers
 ```
 
 ## Key design notes
 
-- **Path B, not path A** for the caustic. WGSL has no float/texture atomics, so
-  the spec's `imageAtomicAdd` scatter doesn't port; additive-blend point splatting
-  is the race-free WebGPU equivalent.
-- **CFL asserted at init** (`assertCflStable`). Explicit leapfrog diverges if the
-  timestep violates eq 4.8, so the sim refuses to start rather than blow up.
-- **Reflective walls** via clamped neighbour loads (∂h/∂n = 0), branch-free.
-- Grid defaults to **128²**; raise `n` in `physics.ts` once the pipeline is proven.
+- **Additive-blend caustic splatting.** WGSL has no float/texture atomics, so the
+  classic scatter-with-`imageAtomicAdd` doesn't port; the caustic is rendered by
+  additive-blend point splatting instead (race-free on WebGPU).
+- **CFL asserted at init.** An explicit leapfrog integrator diverges if the timestep
+  violates the CFL bound, so the sim refuses to start rather than blow up.
+- **Reflective walls** via clamped neighbour loads (zero-gradient / Neumann), branch-free.
+- **One shared operator.** The actuation basis, the GPU sim, and the CPU reference all
+  use the exact same "advance, then inject" rule, so a solved schedule replays back to
+  the target to machine precision — the property the closed-loop test checks.
+- **The 3D tank runs the sim on the CPU.** Reusing the small CPU wave reference avoids
+  bridging WebGPU and WebGL and gives height values directly to the Three.js mesh; the
+  floor caustic is recomputed on the CPU and painted to a 2D canvas (a WebGPU canvas
+  can't be sampled as a WebGL texture).
+- **Symmetric wavemakers.** Pistons are placed symmetrically around the tank (an equal
+  number per wall) and their layout is baked into the precomputed actuation asset.
+
+## License
+
+See repository settings.
