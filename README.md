@@ -16,7 +16,9 @@ the 3D tank. Vite builds it, Vitest tests it.
 
 1. You draw a target on the canvas.
 2. The solver finds the water surface that would refract light into that target. This
-   is a Poisson solve on the paraxial optics.
+   is a nonlinear Monge-Ampère solve (a few fixed-point iterations, each a fast DCT
+   Poisson step), which handles sharper, higher-contrast drawings than a plain
+   linear solve.
 3. It converts that surface into a per-piston, time-reversed motion schedule using a
    precomputed inverse of the tank's wave response.
 4. It simulates the shallow-water waves those pistons produce.
@@ -66,8 +68,8 @@ src/
   modules/
     m1_canvas/       drawing canvas to greyscale target
     m2_density/      blur and band-limit into a positive density map
-    m3_inverse/      the inverse-caustic Poisson solver (DCT, Neumann)
-    m4_actuation/    wave-basis pseudoinverse to a piston schedule
+    m3_inverse/      the inverse-caustic solver (nonlinear Monge-Ampère over a DCT Poisson step)
+    m4_actuation/    wave-basis pseudoinverse to a piston schedule (shipped as a binary asset)
     m5_fluid/        forward wave sim (WGSL) plus a CPU reference
     m6_render/       caustic render: normals, refraction splat, tone map
     m7_orchestrator/ the pulse/hold/loop state machine and frame loop
