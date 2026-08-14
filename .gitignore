@@ -7,9 +7,10 @@ dist/
 # Vite/Vitest temp files
 *.timestamp-*.mjs
 
-# Local-only working notes (you + assistant), not for the repo
+# Local-only working notes / planning (you + assistant), not for the repo
 PROGRESS.md
 NEXT_CHAT_PROMPT.md
+Project_Kickoff.md
 
 # Python prototype caches
 __pycache__/
