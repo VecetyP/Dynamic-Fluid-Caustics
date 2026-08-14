@@ -50,10 +50,67 @@ export class InverseCausticSolver {
     for (let k = 0; k < rhs.length; k++) rhs[k] = 1 - I[k] / iBar;
 
     const u = this.solver.solve(rhs, dx);
+    return { target: { np: n, hT: this.heightFromU(u, d, nRel), d, nRel }, u };
+  }
 
-    // h_t = −u / [d(n_rel−1)], then centre to zero mean (free constant).
+  /**
+   * Nonlinear Monge-Ampère solve (crisper, high-contrast targets). The exact
+   * optics is det(I + D²u) = Ī/I; expanding the determinant gives
+   *   ∇²u = Ī/I − 1 − det(D²u),
+   * which we solve as a damped fixed-point (Picard) iteration, each step one DCT
+   * Poisson solve, starting from the paraxial guess. Reduces to the paraxial
+   * answer for low contrast; converges to the true surface for high contrast.
+   * (Validated against the NumPy prototype in `prototypes/m3_poisson/monge_ampere.py`.)
+   */
+  solveMA(
+    I: Float64Array,
+    dx: number,
+    d: number,
+    nRel: number,
+    iters = 40,
+    damping = 0.6,
+    tol = 1e-7
+  ): InverseCausticResult {
+    const n = this.n;
+    if (I.length !== n * n) throw new Error(`I must be length ${n * n}`);
+
+    let sum = 0;
+    for (let k = 0; k < I.length; k++) {
+      if (I[k] <= 0) throw new Error("Target irradiance must be strictly positive.");
+      sum += I[k];
+    }
+    const iBar = sum / I.length;
+    const g = new Float64Array(n * n); // target determinant Ī/I
+    for (let k = 0; k < g.length; k++) g[k] = iBar / I[k];
+
+    // Paraxial initial guess.
+    const rhs0 = new Float64Array(n * n);
+    for (let k = 0; k < rhs0.length; k++) rhs0[k] = 1 - I[k] / iBar;
+    let u = this.solver.solve(rhs0, dx);
+
+    const rhs = new Float64Array(n * n);
+    for (let it = 0; it < iters; it++) {
+      const detH = hessianDet(u, n, dx); // det(D²u)
+      for (let k = 0; k < rhs.length; k++) rhs[k] = g[k] - 1 - detH[k];
+      const uNew = this.solver.solve(rhs, dx); // DC mode dropped ⇒ Neumann mean
+      let stepNorm = 0;
+      let uNorm = 0;
+      for (let k = 0; k < u.length; k++) {
+        const step = damping * (uNew[k] - u[k]);
+        u[k] += step;
+        stepNorm += step * step;
+        uNorm += u[k] * u[k];
+      }
+      if (Math.sqrt(stepNorm) / (Math.sqrt(uNorm) + 1e-30) < tol) break;
+    }
+
+    return { target: { np: n, hT: this.heightFromU(u, d, nRel), d, nRel }, u };
+  }
+
+  /** h_t = −u / [d(n_rel−1)], centred to zero mean (the constant is free). */
+  private heightFromU(u: Float64Array, d: number, nRel: number): Float32Array {
     const scale = -1 / (d * (nRel - 1));
-    const hT = new Float32Array(n * n);
+    const hT = new Float32Array(u.length);
     let hSum = 0;
     for (let k = 0; k < u.length; k++) {
       const h = u[k] * scale;
@@ -62,9 +119,32 @@ export class InverseCausticSolver {
     }
     const hMean = hSum / hT.length;
     for (let k = 0; k < hT.length; k++) hT[k] -= hMean;
-
-    return { target: { np: n, hT, d, nRel }, u };
+    return hT;
   }
+}
+
+/** Determinant of the Hessian of u (uxx·uyy − uxy²), row-major, edge-clamped
+ *  finite differences matching `forwardNonlinear`. */
+function hessianDet(u: Float64Array, n: number, dx: number): Float64Array {
+  const at = (x: number, y: number): number => {
+    const cx = x < 0 ? 0 : x > n - 1 ? n - 1 : x;
+    const cy = y < 0 ? 0 : y > n - 1 ? n - 1 : y;
+    return u[cy * n + cx];
+  };
+  const invDx2 = 1 / (dx * dx);
+  const out = new Float64Array(n * n);
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const c = at(x, y);
+      const uxx = (at(x + 1, y) - 2 * c + at(x - 1, y)) * invDx2;
+      const uyy = (at(x, y + 1) - 2 * c + at(x, y - 1)) * invDx2;
+      const uxy =
+        (at(x + 1, y + 1) - at(x + 1, y - 1) - at(x - 1, y + 1) + at(x - 1, y - 1)) *
+        (0.25 * invDx2);
+      out[y * n + x] = uxx * uyy - uxy * uxy;
+    }
+  }
+  return out;
 }
 
 /**

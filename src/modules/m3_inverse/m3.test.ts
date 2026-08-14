@@ -107,4 +107,28 @@ describe("M3 inverse-caustic (DCT Poisson port)", () => {
     // Absolute accuracy sanity at the gentlest target.
     expect(errs[errs.length - 1]).toBeLessThan(1e-3);
   });
+
+  it("Monge-Ampère beats paraxial on high-contrast targets", () => {
+    const solver = new InverseCausticSolver(N);
+    const I = syntheticTarget(N, 1.0); // high contrast: paraxial struggles here
+    let iBar = 0;
+    for (const v of I) iBar += v;
+    iBar /= I.length;
+    const targetNorm = new Float64Array(I.length);
+    for (let k = 0; k < I.length; k++) targetNorm[k] = I[k] / iBar;
+
+    const lin = solver.solve(I, DX, D, NREL);
+    const ma = solver.solveMA(I, DX, D, NREL);
+
+    const errLin = relL2(forwardNonlinear(lin.u, N, DX), targetNorm);
+    const errMA = relL2(forwardNonlinear(ma.u, N, DX), targetNorm);
+
+    // MA should be dramatically better, and actually accurate.
+    expect(errMA).toBeLessThan(errLin * 0.25);
+    expect(errMA).toBeLessThan(0.05);
+    // MA still returns a valid, zero-mean heightmap.
+    let mean = 0;
+    for (const h of ma.target.hT) mean += h;
+    expect(Math.abs(mean / ma.target.hT.length)).toBeLessThan(1e-6);
+  });
 });
