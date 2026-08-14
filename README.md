@@ -18,10 +18,10 @@ Press **Solve** on a sketch and the pipeline runs end to end:
 1. **Draw** a target on the canvas.
 2. **Inverse solve** for the water surface that would refract light into that target
    (a Poisson/Neumann solve on the paraxial caustic equations).
-3. **Actuation** — turn that surface into a per-piston, time-reversed amplitude
+3. **Actuation**: turn that surface into a per-piston, time-reversed amplitude
    schedule via a precomputed regularised pseudoinverse of the wave-response matrix.
 4. **Forward simulate** the shallow-water waves driven by those pistons.
-5. **Render the caustic** — at focal time the wavefronts converge and the caustic
+5. **Render the caustic** at focal time the wavefronts converge and the caustic
    focuses into your drawing, then the whole thing re-pulses.
 
 The interactive 3D tank shows the same physics: glass walls, wavemaker paddles
