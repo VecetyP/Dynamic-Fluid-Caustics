@@ -6,7 +6,7 @@ This is an interactive **inverse-caustics** simulator. You sketch (or will soon
 upload) a target image; the software solves for the transient water-surface shape
 whose refracted caustic reconstructs that image on the tank floor, computes the
 wall-piston motions that produce that surface, runs a forward wave simulation, and
-renders the resulting caustic — both as a 2D view and inside an orbitable 3D tank.
+renders the resulting caustic on a 2D sideview and inside an orbitable 3D tank.
 
 Built with **TypeScript + WebGPU** (2D physics/caustic) and **Three.js / WebGL**
 (the 3D tank), bundled with Vite and tested with Vitest.
@@ -28,9 +28,9 @@ The interactive 3D tank shows the same physics: glass walls, wavemaker paddles
 around the rim that move on the computed schedule, a rippling water surface, and the
 live caustic on the tank floor.
 
-> **Want the math?** [`HOW_IT_WORKS.md`](./HOW_IT_WORKS.md) is a self-contained deep
-> dive into every step — the wave model, the caustic optics, the Poisson inverse, the
-> pseudoinverse actuation, and the rendering — for readers who want to know how it
+> **Want the math?** [`HOW_IT_WORKS.md`](./HOW_IT_WORKS.md) is a deep
+> dive into every step (The wave model, the caustic optics, the Poisson inverse, the
+> pseudoinverse actuation, and the rendering) for readers who want to know how it
 > works under the hood.
 
 ## Run
