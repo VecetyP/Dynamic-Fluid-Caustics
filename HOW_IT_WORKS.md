@@ -98,12 +98,20 @@ against a NumPy reference down to a residual around 1e-13.
 The surface height then follows from the refraction geometry as
 `h_t = -u / [d(n_rel - 1)]`, where `n_rel` is the water-to-air index ratio, about 1.333.
 
-There's a catch, and it's worth being honest about it. This is a linear (paraxial)
-approximation of a problem that's genuinely nonlinear. The true relation is
-Monge-Ampère, `det(I + D²u) = 1/I`. High-contrast targets need large surface curvature,
-which is exactly where the linear approximation falls apart. So `m2_density`
-deliberately keeps contrast low (a bright ambient base plus a modest drawing gain), to
-stay in the range where M3 is accurate.
+The catch is that this is a linear (paraxial) approximation of a problem that's
+genuinely nonlinear. The true relation is Monge-Ampère, `det(I + D²u) = Ī/I`.
+High-contrast targets need large surface curvature, which is exactly where the linear
+approximation falls apart.
+
+So the app runs the nonlinear solve. Expanding the determinant gives
+`∇²u = Ī/I − 1 − det(D²u)`, and we solve it as a damped fixed-point (Picard) iteration:
+start from the paraxial guess, then repeatedly re-solve the Poisson problem with the
+Hessian term folded into the right-hand side, each iteration reusing the same DCT
+solver. For gentle targets it lands on the paraxial answer in one step; for sharp,
+high-contrast targets it keeps converging where the linear solve would produce garbage.
+It typically takes a few dozen iterations, each one cheap. `m2_density` can then pass
+through much higher contrast than the paraxial solver could tolerate, which is what lets
+you draw more complex, crisper shapes.
 
 ## 4. The actuation inverse (M4): from a shape to piston motions
 
@@ -235,15 +243,14 @@ eye in the browser.
 
 ## 10. Where it cuts corners
 
-M3 solves the linearised optics, not the full Monge-Ampère problem. That's great for
-smooth, low-contrast targets, and a full nonlinear solve is the obvious next upgrade if
-you want high contrast.
-
 The caustic uses additive splatting instead of an atomic scatter, forced by WGSL's lack
 of atomics (see section 6).
 
-The shipped actuation asset is built for a small tank so it fits as inline JSON. A
-full-resolution `M⁺` is large and would ship as a compressed or streamed binary instead.
+The actuation runs on a 32x32 grid with 24 wall pistons. Its pseudoinverse is about
+4 MB, shipped as a raw float32 binary (`pinv_medium.bin`) with a small JSON sidecar for
+the geometry, since inlining it as JSON would bloat the bundle. Pushing to a much finer
+grid is possible but the matrix grows fast (a 64x64 version is tens of MB), so that
+would want in-browser generation or a streamed asset rather than a committed file.
 
 The 3D floor caustic is a CPU re-derivation, not the same pixels as the 2D WebGPU view
 (see section 8). They agree on physics, not on exact pixels.

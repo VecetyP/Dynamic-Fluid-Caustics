@@ -15,25 +15,35 @@
 
 import type { PistonSchedule, TargetHeightmap } from "../../contracts/index.ts";
 
-/** Shape of the JSON asset produced by export_pinv.py. */
+/** Tank geometry metadata (shared by the JSON and binary asset formats). */
+export interface PinvGeometry {
+  n: number;
+  dx: number;
+  depth: number;
+  gamma: number;
+  pistonCount: number;
+  numSteps: number;
+  lambda: number;
+  dt: number;
+  focalTime: number;
+  pistonCells: number[];
+}
+
+/** Inline-JSON asset (small tanks): pinv shipped as a number[] (export_pinv.py). */
 export interface PinvAsset {
-  geometry: {
-    n: number;
-    dx: number;
-    depth: number;
-    gamma: number;
-    pistonCount: number;
-    numSteps: number;
-    lambda: number;
-    dt: number;
-    focalTime: number;
-    pistonCells: number[];
-  };
+  geometry: PinvGeometry;
   pinv: {
     rows: number; // P·T
     cols: number; // N (surface samples)
     data: number[]; // row-major, length rows*cols
   };
+  sample?: { hT: number[]; aExpected: number[] };
+}
+
+/** Metadata sidecar for the BINARY asset (export_pinv_medium.py): geometry +
+ *  golden sample, with the pinv floats in a companion .bin. */
+export interface PinvMeta {
+  geometry: PinvGeometry;
   sample?: { hT: number[]; aExpected: number[] };
 }
 
@@ -51,16 +61,36 @@ export class ActuationMapper {
     if (data.length !== rows * cols) {
       throw new Error(`pinv data length ${data.length} != rows*cols ${rows * cols}`);
     }
-    if (rows !== asset.geometry.pistonCount * asset.geometry.numSteps) {
-      throw new Error("pinv rows must equal pistonCount * numSteps");
-    }
     this.rows = rows;
     this.cols = cols;
+    this.pinv = Float64Array.from(data);
     this.numPistons = asset.geometry.pistonCount;
     this.numSteps = asset.geometry.numSteps;
     this.dt = asset.geometry.dt;
     this.focalTime = asset.geometry.focalTime;
-    this.pinv = Float64Array.from(data);
+    this.validate(asset.geometry);
+  }
+
+  /** Build from a geometry sidecar + a raw pinv Float32Array (binary asset). */
+  static fromBinary(geometry: PinvGeometry, pinv: Float32Array): ActuationMapper {
+    const rows = geometry.pistonCount * geometry.numSteps;
+    const cols = geometry.n * geometry.n;
+    if (pinv.length !== rows * cols) {
+      throw new Error(`pinv length ${pinv.length} != rows*cols ${rows * cols}`);
+    }
+    return new ActuationMapper({
+      geometry,
+      pinv: { rows, cols, data: pinv as unknown as number[] }, // matvec reads it index-wise
+    });
+  }
+
+  private validate(geometry: PinvGeometry): void {
+    if (this.rows !== geometry.pistonCount * geometry.numSteps) {
+      throw new Error("pinv rows must equal pistonCount * numSteps");
+    }
+    if (this.cols !== geometry.n * geometry.n) {
+      throw new Error("pinv cols must equal n*n");
+    }
   }
 
   /**

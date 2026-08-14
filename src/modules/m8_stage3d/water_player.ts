@@ -25,7 +25,7 @@
 import { WaveFieldCPU } from "../m5_fluid/reference.ts";
 import type { WaveParams } from "../../physics.ts";
 import type { PistonSchedule } from "../../contracts/index.ts";
-import { BASE_STEP_SECONDS, BASE_HOLD_SECONDS } from "../../playback_timing.ts";
+import { stepSeconds, holdSeconds } from "../../playback_timing.ts";
 
 export type WaterPhase = "idle" | "building" | "hold";
 
@@ -84,10 +84,10 @@ export class CpuWaterPlayer {
   }
 
   private stepDuration(): number {
-    return BASE_STEP_SECONDS / this.speed;
+    return stepSeconds(this.numSteps, this.speed);
   }
   private holdDuration(): number {
-    return BASE_HOLD_SECONDS / this.speed;
+    return holdSeconds(this.speed);
   }
 
   // ---------------------------------------------------------------------------

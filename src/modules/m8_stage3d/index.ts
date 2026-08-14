@@ -496,7 +496,18 @@ export class Stage3D {
     if (this.causticTex) this.causticTex.needsUpdate = true; // pull latest floor frame
   }
 
-  /** Begin the render loop. */
+  /** Render one frame with an externally supplied dt. Use this when a single app
+   *  loop drives both the 3D tank and the 2D preview off ONE clock, so they stay
+   *  perfectly in sync (see main.ts). */
+  frame(dt: number): void {
+    this.onFrame?.(dt);
+    this.updateVisuals(dt);
+    this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  /** Begin a self-contained render loop (standalone use). When the app drives the
+   *  frame externally via `frame(dt)`, don't call this. */
   start(): void {
     if (this.running) return;
     this.running = true;
@@ -505,10 +516,7 @@ export class Stage3D {
       if (!this.running) return;
       const dt = Math.min(0.05, (now - this.lastTime) / 1000);
       this.lastTime = now;
-      this.onFrame?.(dt);
-      this.updateVisuals(dt);
-      this.controls.update();
-      this.renderer.render(this.scene, this.camera);
+      this.frame(dt);
       this.rafId = requestAnimationFrame(tick);
     };
     this.rafId = requestAnimationFrame(tick);
