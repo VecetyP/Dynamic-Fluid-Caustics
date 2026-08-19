@@ -125,7 +125,7 @@ async function boot(): Promise<void> {
     stage.waterVerticalScale = (0.16 * stage.cfg.tankDepth) / peak;
     const pAmp = player.maxAbsAmplitude();
     stage.pistonTravelScale = pAmp > 0 ? (0.14 * stage.cfg.tankSize) / pAmp : 0.15;
-    hintEl.textContent = `${label} — the caustic pulses into the target. Draw again and Solve to change it.`;
+    hintEl.textContent = `${label}. Draw again and Solve to change it.`;
   };
 
   const solveFromSketch = (intensity: Float32Array): void => {
