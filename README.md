@@ -4,6 +4,8 @@ Draw a shape, and watch water focus light into it.
 
 ![Star-shaped caustics](image.png)
 
+Try it out here: https://vecetyp.github.io/Dynamic-Fluid-Caustics/
+
 You know the wobbly bright pattern at the bottom of a swimming pool? That's a caustic:
 light bent by the water surface. This project runs that backwards. You sketch a target
 picture, and the software works out what the water surface would have to look like to
