@@ -14,7 +14,7 @@ build that surface, simulates the waves, and renders the caustic that comes
 out. You get a 2D view and an orbitable 3D tank.
 
 It's written in TypeScript with WebGPU for the physics and caustic, and Three.js for
-the 3D tank. Vite builds it, Vitest tests it.
+the 3D tank. Built and tested with Vite and Vitest.
 
 ## What actually happens when you press Solve
 
